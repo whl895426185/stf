@@ -1,0 +1,72 @@
+FROM ubuntu:16.04
+
+# Sneak the stf executable into $PATH.
+ENV PATH /app/bin:$PATH
+
+# Work in app dir by default.
+WORKDIR /app
+
+# Export default app port, not enough for all processes but it should do
+# for now.
+EXPOSE 3000
+
+# Install app requirements. Trying to optimize push speed for dependant apps
+# by reducing layers as much as possible. Note that one of the final steps
+# installs development files for node-gyp so that npm install won't have to
+# wait for them on the first native module installation.
+ADD sources.list /etc/apt/
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    useradd --system \
+      --create-home \
+      --shell /usr/sbin/nologin \
+      stf && \
+    cd /tmp && \
+    #更新，下载插件
+    apt-get update && \
+    apt-get -y install wget python build-essential
+
+#下载nodejs
+RUN wget --progress=dot:mega \
+      https://nodejs.org/dist/v8.14.0/node-v8.14.0-linux-x64.tar.xz && \
+    tar -xJf node-v*.tar.xz --strip-components 1 -C /usr/local && \
+    rm node-v*.tar.xz && \
+    #执行安装
+    su -s /bin/bash -c '/usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js install'
+
+#下载libsodium
+RUN wget --progress=dot:mega \
+      https://download.libsodium.org/libsodium/releases/libsodium-1.0.18.tar.gz && \
+    tar -xvf libsodium-1.0.18.tar.gz && \
+    rm libsodium-1.0.18.tar.gz && \
+    cd libsodium-1.0.18 && \
+    ./configure && \
+    make && \
+    make install
+
+#下载libzmq
+RUN wget --progress=dot:mega \
+      https://github.com/zeromq/libzmq/releases/download/v4.2.2/zeromq-4.2.2.tar.gz && \
+    tar -xvf zeromq-4.2.2.tar.gz && \
+    rm zeromq-4.2.2.tar.gz && \
+    cd zeromq-4.2.2 && \
+    ./configure --without-libsodium && \
+    make && \
+    make install
+
+#下载protobuf
+RUN wget --progress=dot:mega \
+      https://github.com/google/protobuf/releases/download/v3.5.0/protobuf-cpp-3.5.0.tar.gz && \
+    tar -xvf protobuf-cpp-3.5.0.tar.gz && \
+    rm protobuf-cpp-3.5.0.tar.gz && \
+    cd protobuf-3.5.0 && \
+    ./configure && \
+    make && \
+    make install
+
+#下载依赖插件
+RUN apt-get -y install graphicsmagick yasm pkg-config git curl net-tools iputils-ping && \
+    #清缓存
+    apt-get clean && \
+    mkdir -p /app && \
+    #删除文件
+    rm -rf /var/cache/apt/* /var/lib/apt/lists/*
